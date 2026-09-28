@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Depth: 3D on the Web</title>
+<meta name="description" content="An introduction to 3D web development — WebGL, WebGPU, libraries, shaders and performance — rendered in 3D.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07080d;
+    --panel: rgba(16, 18, 28, 0.72);
+    --border: rgba(140, 160, 255, 0.16);
+    --text: #e8eaf4;
+    --muted: #9aa0b8;
+    --accent: #7c8cff;
+    --accent-2: #3ee6c4;
+    --code-bg: rgba(0, 0, 0, 0.45);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+  #scene {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 0;
+  }
+  .noscene #scene { display: none; }
+  .noscene body, body.noscene {
+    background: radial-gradient(ellipse at 70% 20%, #1b1f45 0%, var(--bg) 60%);
+  }
+
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 10;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px clamp(16px, 4vw, 48px);
+    background: linear-gradient(to bottom, rgba(7,8,13,0.85), rgba(7,8,13,0));
+  }
+  .logo { font-weight: 700; letter-spacing: 0.08em; font-size: 1.05rem; }
+  .logo span { color: var(--accent-2); }
+  nav ul { list-style: none; display: flex; gap: 22px; margin: 0; padding: 0; }
+  nav a { color: var(--muted); text-decoration: none; font-size: 0.92rem; transition: color .2s; }
+  nav a:hover, nav a.active { color: var(--text); }
+  @media (max-width: 760px) { nav ul { display: none; } }
+
+  main { position: relative; z-index: 1; }
+  section {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    padding: 110px clamp(16px, 6vw, 96px);
+  }
+  section.right { justify-content: flex-end; }
+  .card {
+    max-width: 540px;
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: clamp(22px, 3.5vw, 38px);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity .8s ease, transform .8s ease;
+  }
+  .card.visible { opacity: 1; transform: none; }
+  .eyebrow {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.78rem;
+    color: var(--accent-2);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  h1 {
+    font-size: clamp(2.4rem, 6vw, 4.4rem);
+    line-height: 1.04;
+    margin: 12px 0 18px;
+    letter-spacing: -0.02em;
+  }
+  h1 em {
+    font-style: normal;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  h2 { font-size: clamp(1.7rem, 3.6vw, 2.5rem); margin: 10px 0 14px; line-height: 1.15; }
+  p { color: var(--muted); margin: 0 0 14px; }
+  .hero .card { max-width: 620px; background: transparent; border: none; backdrop-filter: none; -webkit-backdrop-filter: none; padding-left: 0; }
+  .hint { margin-top: 26px; font-size: 0.85rem; color: var(--muted); font-family: "JetBrains Mono", monospace; }
+  .hint::before { content: "↓ "; color: var(--accent-2); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 18px; }
+  .tile {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    background: rgba(255,255,255,0.02);
+  }
+  .tile strong { display: block; color: var(--text); font-size: 0.98rem; }
+  .tile small { color: var(--muted); font-size: 0.82rem; line-height: 1.4; display: block; margin-top: 4px; }
+
+  ul.list { margin: 12px 0 0; padding: 0; list-style: none; }
+  ul.list li { padding: 10px 0 10px 28px; position: relative; color: var(--muted); border-top: 1px solid var(--border); }
+  ul.list li:first-child { border-top: none; }
+  ul.list li::before { content: ""; position: absolute; left: 4px; top: 18px; width: 9px; height: 9px; border-radius: 2px; background: var(--accent); transform: rotate(45deg); }
+  ul.list li b { color: var(--text); font-weight: 500; }
+
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    overflow-x: auto;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: #cfd3ea;
+    margin: 16px 0 0;
+  }
+  .k { color: #c792ea; } .s { color: #c3e88d; } .c { color: #6b7394; } .n { color: #f78c6c; } .f { color: #82aaff; }
+
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+  button {
+    font: inherit;
+    font-size: 0.88rem;
+    color: var(--text);
+    background: rgba(124,140,255,0.12);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background .2s, border-color .2s;
+  }
+  button:hover { background: rgba(124,140,255,0.25); border-color: var(--accent); }
+  button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #0b0c14; }
+
+  footer {
+    position: relative; z-index: 1;
+    text-align: center;
+    padding: 40px 16px 60px;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  .progress {
+    position: fixed; top: 0; left: 0; height: 2px; z-index: 11;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    width: 0;
+  }
+
+  @media (max-width: 760px) {
+    section, section.right { justify-content: center; align-items: flex-end; padding-bottom: 60px; }
+    .hero .card { background: var(--panel); border: 1px solid var(--border); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); padding: 22px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .card { transition: none; opacity: 1; transform: none; }
+  }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="scene" aria-hidden="true"></canvas>
+<div class="progress" id="progress"></div>
+
+<nav>
+  <div class="logo">DEPTH<span>.</span></div>
+  <ul>
+    <li><a href="#intro">Intro</a></li>
+    <li><a href="#stack">Stack</a></li>
+    <li><a href="#libraries">Libraries</a></li>
+    <li><a href="#shaders">Shaders</a></li>
+    <li><a href="#performance">Performance</a></li>
+    <li><a href="#start">Start</a></li>
+  </ul>
+</nav>
+
+<main>
+  <!-- Each section maps, in order, to one object in the 3D scene. -->
+  <section id="intro" class="hero">
+    <div class="card">
+      <div class="eyebrow">3D web development</div>
+      <h1>The web has<br>a <em>third dimension</em>.</h1>
+      <p>Every modern browser ships a GPU-accelerated graphics pipeline. With a little JavaScript you can render real-time 3D — product viewers, data visualisations, games, art — with no plugin and no install.</p>
+      <p>This page is itself a 3D scene. Scroll through it.</p>
+      <div class="hint">scroll to explore · move the pointer to look around</div>
+    </div>
+  </section>
+
+  <section id="stack" class="right">
+    <div class="card">
+      <div class="eyebrow">01 · The platform</div>
+      <h2>Three browser APIs do the heavy lifting</h2>
+      <div class="grid">
+        <div class="tile"><strong>WebGL 2</strong><small>OpenGL ES 3.0 in the browser. Supported everywhere; the workhorse of 3D on the web.</small></div>
+        <div class="tile"><strong>WebGPU</strong><small>The modern successor: compute shaders, lower overhead, modelled on Vulkan, Metal and D3D12.</small></div>
+        <div class="tile"><strong>WebXR</strong><small>Takes a scene into VR headsets and AR on phones, with tracked controllers and hands.</small></div>
+      </div>
+      <p style="margin-top:16px">All three hand your code a canvas and a GPU. Everything else — cameras, lights, materials, models — is built on top.</p>
+    </div>
+  </section>
+
+  <section id="libraries">
+    <div class="card">
+      <div class="eyebrow">02 · The tools</div>
+      <h2>You rarely talk to the GPU directly</h2>
+      <p>Raw WebGL takes hundreds of lines to draw a lit cube. Libraries give you a scene graph instead:</p>
+      <ul class="list">
+        <li><b>Three.js</b> — the most widely used; small core, huge ecosystem.</li>
+        <li><b>Babylon.js</b> — a full engine with physics, an inspector and a node material editor.</li>
+        <li><b>React Three Fiber</b> — Three.js written as React components.</li>
+        <li><b>PlayCanvas</b> — an engine plus a collaborative browser-based editor.</li>
+        <li><b>A-Frame</b> — declarative HTML tags for VR and AR scenes.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="shaders" class="right">
+    <div class="card">
+      <div class="eyebrow">03 · Shaders</div>
+      <h2>Small programs that run on every vertex and pixel</h2>
+      <p>The rippling sphere is one shader: the vertex stage pushes each point along its normal by a sum of sine waves, and the fragment stage colours it by that displacement.</p>
+<pre><span class="c">// vertex shader (GLSL)</span>
+<span class="k">float</span> d = <span class="f">sin</span>(position.y * <span class="n">4.0</span> + uTime)
+        * <span class="f">sin</span>(position.x * <span class="n">3.0</span> + uTime);
+<span class="k">vec3</span> p = position + normal * d * uAmp;
+gl_Position = projectionMatrix
+            * modelViewMatrix * <span class="k">vec4</span>(p, <span class="n">1.0</span>);</pre>
+      <div class="controls" role="group" aria-label="Shader amplitude">
+        <button data-amp="0">Still</button>
+        <button data-amp="0.18" aria-pressed="true">Ripple</button>
+        <button data-amp="0.42">Surge</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="performance">
+    <div class="card">
+      <div class="eyebrow">04 · Performance</div>
+      <h2>60 frames a second is 16.6 ms each</h2>
+      <ul class="list">
+        <li><b>Draw calls matter most.</b> Merge geometry and use instancing — the cubes here are one instanced draw.</li>
+        <li><b>Compress assets.</b> glTF with Draco or Meshopt geometry and KTX2 textures.</li>
+        <li><b>Cap the pixel ratio.</b> Rendering at 3× on a phone triples fill cost for little gain.</li>
+        <li><b>Pause when hidden.</b> Stop the loop when the tab or canvas is off-screen.</li>
+        <li><b>Respect reduced motion.</b> This page slows its animation when the OS asks it to.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="start" class="right">
+    <div class="card">
+      <div class="eyebrow">05 · Get started</div>
+      <h2>A spinning cube in twelve lines</h2>
+<pre><span class="k">import</span> * <span class="k">as</span> THREE <span class="k">from</span> <span class="s">'three'</span>;
+
+<span class="k">const</span> scene = <span class="k">new</span> THREE.<span class="f">Scene</span>();
+<span class="k">const</span> camera = <span class="k">new</span> THREE.<span class="f">PerspectiveCamera</span>(<span class="n">60</span>, innerWidth / innerHeight);
+camera.position.z = <span class="n">3</span>;
+<span class="k">const</span> cube = <span class="k">new</span> THREE.<span class="f">Mesh</span>(
+  <span class="k">new</span> THREE.<span class="f">BoxGeometry</span>(),
+  <span class="k">new</span> THREE.<span class="f">MeshNormalMaterial</span>());
+scene.<span class="f">add</span>(cube);
+<span class="k">const</span> renderer = <span class="k">new</span> THREE.<span class="f">WebGLRenderer</span>();
+renderer.<span class="f">setSize</span>(innerWidth, innerHeight);
+document.body.<span class="f">append</span>(renderer.domElement);
+renderer.<span class="f">setAnimationLoop</span>(t =&gt; { cube.rotation.y = t / <span class="n">1000</span>; renderer.<span class="f">render</span>(scene, camera); });</pre>
+      <p style="margin-top:16px">Next steps: load a glTF model, add orbit controls, and write your first shader.</p>
+    </div>
+  </section>
+</main>
+
+<footer>Built with Three.js · a single HTML file</footer>
+
+<script>
+  // Fade cards in as they enter the viewport; runs even if WebGL fails.
+  const io = new IntersectionObserver(entries => {
+    for (const e of entries) if (e.isIntersecting) e.target.classList.add('visible');
+  }, { threshold: 0.2 });
+  document.querySelectorAll('.card').forEach(c => io.observe(c));
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+const canvas = document.getElementById('scene');
+const sections = [...document.querySelectorAll('main section')];
+const navLinks = [...document.querySelectorAll('nav a')];
+const progressBar = document.getElementById('progress');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+} catch (err) {
+  document.documentElement.classList.add('noscene');
+  document.body.classList.add('noscene');
+  throw err;
+}
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x07080d);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x07080d, 8, 22);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+camera.position.set(0, 0, 8);
+
+scene.add(new THREE.AmbientLight(0x8890ff, 0.35));
+const key = new THREE.DirectionalLight(0xffffff, 1.4);
+key.position.set(4, 6, 5);
+scene.add(key);
+const rim = new THREE.PointLight(0x3ee6c4, 30, 20);
+rim.position.set(-4, -2, 3);
+scene.add(rim);
+
+const SPACING = 9;           // vertical distance between section objects
+const objects = [];          // one THREE.Object3D per section, in order
+
+// 0 · intro: faceted icosahedron with a wireframe shell
+{
+  const g = new THREE.Group();
+  const geo = new THREE.IcosahedronGeometry(1.6, 1);
+  g.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x5a66ff, flatShading: true, metalness: 0.3, roughness: 0.35 })));
+  g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(2.1, 1), new THREE.MeshBasicMaterial({ color: 0x3ee6c4, wireframe: true, transparent: true, opacity: 0.35 })));
+  objects.push(g);
+}
+// 1 · stack: three nested rings, one per API
+{
+  const g = new THREE.Group();
+  const colors = [0x7c8cff, 0x3ee6c4, 0xff7ab8];
+  colors.forEach((c, i) => {
+    const m = new THREE.Mesh(
+      new THREE.TorusGeometry(1.1 + i * 0.45, 0.08, 16, 100),
+      new THREE.MeshStandardMaterial({ color: c, metalness: 0.5, roughness: 0.25, emissive: c, emissiveIntensity: 0.15 }));
+    m.rotation.x = i * 0.9;
+    m.rotation.y = i * 0.6;
+    m.userData.spin = 0.3 + i * 0.25;
+    g.add(m);
+  });
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.45, 32, 16), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x7c8cff, emissiveIntensity: 0.6 })));
+  objects.push(g);
+}
+// 2 · libraries: a cube of cubes, drawn as one InstancedMesh
+{
+  const n = 5, count = n * n * n;
+  const mesh = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(0.34, 0.34, 0.34),
+    new THREE.MeshStandardMaterial({ metalness: 0.2, roughness: 0.4 }),
+    count);
+  const base = [];
+  const color = new THREE.Color();
+  let i = 0;
+  for (let x = 0; x < n; x++) for (let y = 0; y < n; y++) for (let z = 0; z < n; z++) {
+    const p = new THREE.Vector3(x - 2, y - 2, z - 2).multiplyScalar(0.48);
+    base.push(p);
+    color.setHSL(0.62 - (x + y + z) / (3 * n) * 0.25, 0.75, 0.6);
+    mesh.setColorAt(i++, color);
+  }
+  mesh.userData.base = base;
+  objects.push(mesh);
+}
+// 3 · shaders: displaced sphere
+const shaderUniforms = { uTime: { value: 0 }, uAmp: { value: 0.18 } };
+let targetAmp = 0.18;
+{
+  const mat = new THREE.ShaderMaterial({
+    uniforms: shaderUniforms,
+    vertexShader: /* glsl */`
+      uniform float uTime; uniform float uAmp;
+      varying float vD; varying vec3 vN;
+      void main() {
+        float d = sin(position.y * 4.0 + uTime) * sin(position.x * 3.0 + uTime * 0.8)
+                + 0.5 * sin(position.z * 6.0 - uTime * 1.3);
+        vD = d;
+        vN = normalMatrix * normal;
+        vec3 p = position + normal * d * uAmp;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      }`,
+    fragmentShader: /* glsl */`
+      varying float vD; varying vec3 vN;
+      void main() {
+        vec3 a = vec3(0.49, 0.55, 1.0), b = vec3(0.24, 0.9, 0.77);
+        vec3 col = mix(a, b, vD * 0.5 + 0.5);
+        float l = 0.45 + 0.55 * max(dot(normalize(vN), normalize(vec3(0.5, 0.8, 0.6))), 0.0);
+        gl_FragColor = vec4(col * l, 1.0);
+      }`,
+  });
+  objects.push(new THREE.Mesh(new THREE.SphereGeometry(1.5, 128, 64), mat));
+}
+// 4 · performance: torus knot with a speed-line wireframe
+{
+  const g = new THREE.Group();
+  const geo = new THREE.TorusKnotGeometry(1.1, 0.34, 180, 24);
+  g.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xff9d5c, metalness: 0.6, roughness: 0.25 })));
+  g.add(new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.TorusKnotGeometry(1.1, 0.36, 90, 10)),
+    new THREE.LineBasicMaterial({ color: 0xffd2a8, transparent: true, opacity: 0.15 })));
+  objects.push(g);
+}
+// 5 · get started: the humble spinning cube
+{
+  const m = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 1.8), new THREE.MeshNormalMaterial());
+  objects.push(m);
+}
+
+// Star field spanning the whole scroll range
+{
+  const count = 1800;
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * 30;
+    pos[i * 3 + 1] = 6 - Math.random() * (SPACING * objects.length + 8);
+    pos[i * 3 + 2] = (Math.random() - 0.5) * 20 - 4;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x9aa6ff, size: 0.035, transparent: true, opacity: 0.8 })));
+}
+
+// Place each object beside its section's card (opposite side), or centred on narrow screens.
+function layout() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  const narrow = w < 760;
+  objects.forEach((o, i) => {
+    const cardOnRight = sections[i].classList.contains('right');
+    const side = narrow ? 0 : (cardOnRight ? -1 : 1);
+    o.position.set(side * Math.min(3.2, camera.aspect * 1.9), -i * SPACING + (narrow ? 1.6 : 0), 0);
+    o.scale.setScalar(narrow ? 0.75 : 1);
+    if (!o.parent) scene.add(o);
+  });
+}
+layout();
+addEventListener('resize', layout);
+
+// Scroll → camera height; pointer → gentle parallax
+let scrollT = 0, camY = 0;
+function onScroll() {
+  const max = document.documentElement.scrollHeight - innerHeight;
+  const tops = sections.map(s => s.offsetTop);
+  const y = scrollY;
+  // fractional section index, so the camera lines up with each section as it fills the screen
+  let idx = 0;
+  for (let i = 0; i < tops.length - 1; i++) {
+    if (y >= tops[i]) idx = i + Math.min(1, (y - tops[i]) / (tops[i + 1] - tops[i]));
+  }
+  scrollT = idx;
+  progressBar.style.width = (max > 0 ? (y / max) * 100 : 0) + '%';
+  const active = Math.round(idx);
+  navLinks.forEach((a, i) => a.classList.toggle('active', i === active));
+}
+addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+
+const pointer = { x: 0, y: 0 }, look = { x: 0, y: 0 };
+addEventListener('pointermove', e => {
+  pointer.x = e.clientX / innerWidth - 0.5;
+  pointer.y = e.clientY / innerHeight - 0.5;
+});
+
+// Shader amplitude buttons
+document.querySelectorAll('[data-amp]').forEach(btn => btn.addEventListener('click', () => {
+  targetAmp = parseFloat(btn.dataset.amp);
+  document.querySelectorAll('[data-amp]').forEach(b => b.setAttribute('aria-pressed', b === btn));
+}));
+
+// Only render while the tab is visible
+let running = true;
+document.addEventListener('visibilitychange', () => { running = !document.hidden; });
+
+const clock = new THREE.Clock();
+const dummy = new THREE.Object3D();
+const speed = reducedMotion ? 0.25 : 1;
+
+renderer.setAnimationLoop(() => {
+  if (!running) return;
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime * speed;
+
+  camY += (-scrollT * SPACING - camY) * Math.min(1, dt * 5);
+  look.x += (pointer.x - look.x) * Math.min(1, dt * 3);
+  look.y += (pointer.y - look.y) * Math.min(1, dt * 3);
+  camera.position.set(look.x * 1.5, camY - look.y * 1.0, 8);
+  camera.lookAt(0, camY, 0);
+  rim.position.y = camY - 2;
+  key.position.y = camY + 6;
+
+  const [ico, rings, cubes, sphere, knot, box] = objects;
+  ico.rotation.set(t * 0.15, t * 0.22, 0);
+  ico.children[1].rotation.y = -t * 0.3;
+
+  rings.children.forEach(r => { if (r.userData.spin) { r.rotation.x += dt * speed * r.userData.spin; r.rotation.y += dt * speed * r.userData.spin * 0.6; } });
+
+  cubes.rotation.set(t * 0.1, t * 0.18, 0);
+  const base = cubes.userData.base;
+  for (let i = 0; i < base.length; i++) {
+    const p = base[i];
+    const wave = Math.sin(t * 1.6 + p.length() * 2.2) * 0.12;
+    dummy.position.copy(p).multiplyScalar(1 + wave);
+    dummy.rotation.set(wave * 4, wave * 4, 0);
+    dummy.updateMatrix();
+    cubes.setMatrixAt(i, dummy.matrix);
+  }
+  cubes.instanceMatrix.needsUpdate = true;
+
+  shaderUniforms.uTime.value = t * 1.5;
+  shaderUniforms.uAmp.value += (targetAmp - shaderUniforms.uAmp.value) * Math.min(1, dt * 4);
+  sphere.rotation.y = t * 0.2;
+
+  knot.rotation.set(t * 0.25, t * 0.35, 0);
+  box.rotation.set(t * 0.4, t * 0.6, 0);
+
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
